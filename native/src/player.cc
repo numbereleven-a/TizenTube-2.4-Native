@@ -65,7 +65,7 @@ struct NativePlayer::Track : public pp::ElementaryStreamListener_Samsung {
     int redirects = 0;
     uint64_t offset = 0, length = 0, range_received = 0, segment_received = 0, segment_expected = 0;
     bool busy = false, complete = false, ended = false, configured = false, initializing = false, range_valid = false, retry_fresh = false, reused = false, header_range = false;
-    bool append_pending = false, need = true, header = false, cancelled = false, live = false, head_resolved = false, redirected = false;
+    bool append_pending = false, appending = false, need = true, header = false, cancelled = false, live = false, head_resolved = false, redirected = false;
     int64_t seq = -1, probed_head = -1;
     double retry_at = 0;
     double last_data_at = 0;
@@ -504,11 +504,13 @@ bool NativePlayer::Network(const pp::VarDictionary& m) {
                 if(t->status==403 && t->http_retries==0 && t->range_received==0){
                     ++t->http_retries;t->retry_fresh=true;t->retry_at=pp::Module::Get()->core()->GetTimeTicks()+0.25;reconnecting=true;
                 }else if (type == "error") {
-                    int limit = (!t->header && t->offset == 0) ? 2 : 3;
+                    int limit = (!t->header && t->offset == 0) ? 2 : 5;
                     t->host = t->base_host; t->path = t->base_path; t->redirects = 0;
-                    t->header_range = true; t->retry_fresh = true;
+                    t->header_range = t->retries >= 1 ? !t->header_range : true;
+                    t->retry_fresh = true;
                     if (++t->retries > limit) t->error = "Media network failed";
-                    t->retry_at = pp::Module::Get()->core()->GetTimeTicks() + t->retries;
+                    double delay = t->retries == 1 ? 0.25 : t->retries == 2 ? 0.5 : std::min(4.0, static_cast<double>(t->retries - 2));
+                    t->retry_at = pp::Module::Get()->core()->GetTimeTicks() + delay;
                 } else if (!t->redirect.empty() && t->error.empty()) {
                     MediaRedirect(t->redirect, t->host, t->path); t->url = t->redirect; t->redirect.clear();
                 } else { t->retries = 0; if (!t->range_received) {if(t->error.empty())t->error = "Empty media range";} else t->redirects = 0; }
@@ -548,32 +550,67 @@ void NativePlayer::Pump(int32_t) {
             pthread_mutex_lock(&t.mutex);
         }
         bool fetch = !t.busy && !t.complete && (!t.live || t.head_resolved || i == 0) && t.input_bytes < kInputLimit && pp::Module::Get()->core()->GetTimeTicks() >= t.retry_at;
-        double stall_limit = (!t.header && t.offset == 0 && !t.live) ? 8.0 : 12.0;
+        double stall_limit = t.live ? 12.0 : std::min(15.0, 6.0 + t.retries * 3.0);
         int stalled = t.busy && pp::Module::Get()->core()->GetTimeTicks() - t.last_data_at > stall_limit ? t.request : 0;
         bool config = t.header && !t.configured && !t.initializing;
         if (config) t.initializing = true;
-        bool append = attached_ && t.configured && t.need && !t.append_pending && !t.queue.empty() && t.queue.front().pts_ms <= (position_ + 15) * 1000;
-        if (append) {
-            t.pending = std::move(t.queue.front()); t.queue.pop_front(); t.queued_bytes -= t.pending.data.size();
-            t.append_pending = true; t.pending_generation = t.seek_generation; pthread_cond_broadcast(&t.changed);
-        }
         drained = drained && t.ended && t.queue.empty() && !t.append_pending;
         pthread_mutex_unlock(&t.mutex);
         if (stalled) { pp::VarDictionary m; m.Set("type", "abort"); m.Set("id", stalled); send_(m); }
         if (fetch) Fetch(t);
         if (config) Configure(t);
-        if (append) {
-            PP_ESPacket p{}; p.pts = t.pending.pts_ms / 1000.0; p.dts = t.pending.dts_ms / 1000.0;
-            p.duration = t.pending.duration_ms / 1000.0; p.is_key_frame = PP_FromBool(t.pending.key);
-            p.size = static_cast<uint32_t>(t.pending.data.size()); p.buffer = t.pending.data.data();
-            auto cb = callbacks_.NewCallback(&NativePlayer::Appended, i); cb.MayForce(t.stream->AppendPacket(p, cb));
-        }
+        AppendNext(i);
     }
     if (attached_ && drained && !eos_) { eos_ = true; auto cb = callbacks_.NewCallback(&NativePlayer::Operation); cb.MayForce(source_->SetEndOfStream(cb)); }
     if (!started_ && pp::Module::Get()->core()->GetTimeTicks() >= next_report_) {
         next_report_ = pp::Module::Get()->core()->GetTimeTicks() + 2; Status(attached_ ? "buffering" : "loading");
     }
     pp::Module::Get()->core()->CallOnMainThread(10, callbacks_.NewCallback(&NativePlayer::Pump));
+}
+void NativePlayer::AppendNext(int index) {
+    if (!active_ || !attached_ || !tracks_[index]) return;
+    Track& t = *tracks_[index];
+    if (t.appending) return;
+    t.appending = true;
+    for (int burst = 0; burst < 16 && active_ && attached_ && tracks_[index]; ++burst) {
+        pthread_mutex_lock(&t.mutex);
+        bool can_append = t.configured && t.need && !t.append_pending && !t.queue.empty() &&
+                          t.queue.front().pts_ms <= (position_ + 15) * 1000;
+        if (!can_append) {
+            pthread_mutex_unlock(&t.mutex);
+            break;
+        }
+        if (index == 0 && !live_ && started_ && !seeking_ && t.queue.front().pts_ms < (position_ - 1.5) * 1000) {
+            size_t best_key = 0;
+            bool found_key = false;
+            int64_t target_ms = static_cast<int64_t>((position_ - 0.25) * 1000);
+            for (size_t k = 0; k < t.queue.size(); ++k) {
+                if (t.queue[k].key) {
+                    if (t.queue[k].pts_ms <= target_ms) { best_key = k; found_key = true; }
+                    else if (!found_key) { best_key = k; found_key = true; break; }
+                    else break;
+                }
+            }
+            if (found_key && best_key > 0) {
+                for (size_t k = 0; k < best_key; ++k) {
+                    t.queued_bytes -= t.queue.front().data.size();
+                    t.queue.pop_front();
+                }
+            }
+        }
+        t.pending = std::move(t.queue.front()); t.queue.pop_front(); t.queued_bytes -= t.pending.data.size();
+        t.append_pending = true; t.pending_generation = t.seek_generation; pthread_cond_broadcast(&t.changed);
+        pthread_mutex_unlock(&t.mutex);
+
+        PP_ESPacket p{}; p.pts = t.pending.pts_ms / 1000.0; p.dts = t.pending.dts_ms / 1000.0;
+        p.duration = t.pending.duration_ms / 1000.0; p.is_key_frame = PP_FromBool(t.pending.key);
+        p.size = static_cast<uint32_t>(t.pending.data.size()); p.buffer = t.pending.data.data();
+        auto cb = callbacks_.NewCallback(&NativePlayer::Appended, index);
+        int32_t res = t.stream->AppendPacket(p, cb);
+        if (res == PP_OK_COMPLETIONPENDING) break;
+        cb.MayForce(res);
+    }
+    if (active_ && tracks_[index]) tracks_[index]->appending = false;
 }
 void NativePlayer::Configure(Track& t) {
     if (t.index == 0) { auto cb = callbacks_.NewCallbackWithOutput(&NativePlayer::VideoAdded); cb.MayForce(source_->AddStream(cb, &t)); }
@@ -630,6 +667,7 @@ void NativePlayer::Appended(int32_t code, int index) {
     } else if (code != PP_OK) { Status(index == 0 ? "video-append-error" : "audio-append-error", code); Stop(); return; }
     else { t.submitted = t.pending.pts_ms / 1000.0; ++t.packets; t.pending.data.clear(); }
     t.append_pending = false;
+    if (code == PP_OK && t.need && !t.appending) AppendNext(index);
 }
 void NativePlayer::Operation(int32_t code) { if (code != PP_OK) { Status("operation-error", code); Stop(); } }
 void NativePlayer::SeekDone(int32_t code) { if (code != PP_OK) Operation(code); else { eos_ = false; seeking_ = false; Status("seek-complete"); } }

@@ -46,6 +46,7 @@ private:
     void Closed(int32_t);
     void Open(const pp::VarDictionary& message);
     void Pump(int32_t);
+    void AppendNext(int index);
     void Fetch(Track& track);
     void Configure(Track& track);
     void VideoAdded(int32_t, pp::VideoElementaryStream_Samsung stream);

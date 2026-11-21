@@ -22,7 +22,7 @@
             catch(retryError){toast('Не удалось сохранить настройки');return false;}
         }
     };
-    var native, generation = 0, video = null, currentPair = null, excludedItags = {}, formatFallbacks = 0, position = 0, duration = 0, playing = false, paused = false, seeking = false, resumeAt = null, resumePaused = false,selectedQuality=null;
+    var native, generation = 0, video = null, currentPair = null, excludedItags = {}, formatFallbacks = 0, streamRefreshes = 0, position = 0, duration = 0, playing = false, paused = false, seeking = false, resumeAt = null, resumePaused = false,selectedQuality=null;
     var nativeReady = false, moduleReady = false, nativePlayable = false, loading = false, hudTimer, toastTimer, seekTimer, seekTarget = null,seekOrigin=null,awaitSeekResume=false,hudHeld=false;
     var sb = new SponsorBlock(function (target) { if(playerSettings.sponsorNotice)toast('Спонсорский фрагмент пропущен'); seek(target); });
     root.omegaDiagnostics = {state:'loading',samples:[]};
@@ -106,23 +106,24 @@
         generation++; command('stop'); start(info, nextPair); toast('Пробую другой поток…');
         return true;
     }
-    function open(id, fallbackTitle,preferAccount) {
+    function open(id, fallbackTitle,preferAccount,isRefresh) {
+        var keepPlayback = !!preferAccount || !!isRefresh;
         var keepPosition=resumeAt!==null?resumeAt:position,keepPaused=paused,keepQuality=selectedQuality;
         var fallbackInfo=preferAccount&&video&&video.id===id?video:null;
-        if (!preferAccount) { excludedItags = {}; formatFallbacks = 0; }
+        if (!keepPlayback) { excludedItags = {}; formatFallbacks = 0; streamRefreshes = 0; }
         if (loading || !nativeReady) return;rememberResume();flushResume(); loading = true; var current = ++generation; command('stop'); playing = false; sb.reset(); status('Получение потоков…');
         YouTube.player(id,function (error,info) {
             if (current !== generation) return;
-            if (error) { if(preferAccount){if(fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;fail(error);}else{loading=false;status(error);}return; }
+            if (error) { if(keepPlayback){if(fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;fail(error);}else{loading=false;status(error);}return; }
             if (fallbackTitle && (!info.title || info.title === info.id)) info.title = fallbackTitle;
-            var pair = YouTube.select(info,preferAccount&&keepQuality?keepQuality:playerSettings);
+            var pair = YouTube.select(info,keepPlayback&&keepQuality?keepQuality:playerSettings);
             DebugLog.record('formats',{total:info.formats.length,direct:info.formats.filter(function(f){return !!f.url;}).length,sized:info.formats.filter(function(f){return !!f.url && Number(f.contentLength)>0;}).length,video:info.formats.filter(function(f){return /^video\//.test(f.mimeType||'');}).length,audio:info.formats.filter(function(f){return /^audio\//.test(f.mimeType||'');}).length,ok:!!pair});
-            if (!pair) {if(preferAccount&&fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;var missing=info.formats.some(function(f){return f.url;}) && !info.formats.some(function(f){return f.url && Number(f.contentLength)>0;})?'Потоки без указанного размера пока не поддерживаются.':'Нет подходящих прямых потоков. Попробуйте другой кодек или ролик.';if(preferAccount)fail(missing);else{loading=false;status(missing);}return;}
-            if (preferAccount) { excludedItags = {}; formatFallbacks = 0; }
+            if (!pair) {if(keepPlayback&&fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;var missing=info.formats.some(function(f){return f.url;}) && !info.formats.some(function(f){return f.url && Number(f.contentLength)>0;})?'Потоки без указанного размера пока не поддерживаются.':'Нет подходящих прямых потоков. Попробуйте другой кодек или ролик.';if(keepPlayback)fail(missing);else{loading=false;status(missing);}return;}
+            if (keepPlayback) { excludedItags = {}; formatFallbacks = 0; }
             status('');
-            resumeAt=preferAccount&&!info.isLive?(keepPosition>0?keepPosition:null):resumePosition(info);resumePaused=!!preferAccount&&keepPaused;controls(info);DebugLog.record('open');DebugLog.active(true);WatchHistory.start(info);start(info,pair);
-            if(preferAccount&&keepPaused&&resumeAt===null){paused=true;command('pause');syncPause();}
-        },function(){return current===generation;},function(stage){if(current!==generation)return;var label=stage==='prepare'?'Подготовка видео… Первый запуск может занять больше времени. Назад — отменить.':stage==='account'?'Получение данных видео из аккаунта…':'Получение потоков…';if(preferAccount){el('play-state').textContent=label;showHud();}else status(label,stage==='prepare');},preferAccount);
+            resumeAt=keepPlayback&&!info.isLive?(keepPosition>0?keepPosition:null):resumePosition(info);resumePaused=keepPlayback&&keepPaused;controls(info);DebugLog.record('open');DebugLog.active(true);WatchHistory.start(info);start(info,pair);
+            if(keepPlayback&&keepPaused&&resumeAt===null){paused=true;command('pause');syncPause();}
+        },function(){return current===generation;},function(stage){if(current!==generation)return;var label=stage==='prepare'?'Подготовка видео… Первый запуск может занять больше времени. Назад — отменить.':stage==='account'?'Получение данных видео из аккаунта…':'Получение потоков…';if(keepPlayback){el('play-state').textContent=label;showHud();}else status(label,stage==='prepare');},preferAccount);
     }
     function back(finished) {
         if(loading && nativeReady && !playing){if(el('home').hidden){StreamDecipher.cancel();fail('');return;}generation++;loading=false;StreamDecipher.cancel();status('');return;}
@@ -227,6 +228,13 @@
             }
             if (m.code === -12 && (m.state === 'video-append-error' || m.state === 'audio-append-error') &&
                 tryFormatFallback(video, m.state === 'audio-append-error' ? 1 : 0, m.code)) return;
+            if ((m.state === 'video-error' || m.state === 'audio-error') && nativePlayable && m.code === 0 && video && !video.isLive && streamRefreshes < 2) {
+                streamRefreshes++;
+                DebugLog.record('metadata', {state: m.state === 'audio-error' ? 'audio-stream-refresh' : 'video-stream-refresh', code: 0});
+                toast('Переподключение потока…');
+                open(video.id, video.title, !!video.accountPlayer, true);
+                return;
+            }
             if (m.state.indexOf('error')>=0 || m.state==='invalid-url' || m.state==='unavailable' || m.state.indexOf('unsupported')===0) { fail('Плеер: '+m.state+' ('+m.code+')'); return; }
             if (m.state==='seeking') seeking = true;
             if (m.state==='seek-complete') { seeking = false;clearSeekPreview();el('time').textContent=video&&video.isLive?clock(position)+' · Прямой эфир':clock(position)+' / '+clock(duration);el('progress').style.width=(video&&video.isLive?100:duration?Math.min(100,position/duration*100):0)+'%'; }
