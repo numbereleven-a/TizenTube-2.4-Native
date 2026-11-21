@@ -1,0 +1,41 @@
+{
+    "search": {
+        "_comment": "Signed-out search. clientVersion is read from youtube.com when possible; this is the fallback.",
+        "clientName": "WEB",
+        "clientVersion": "2.20261024.01.00",
+        "clientNameId": 1,
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+    },
+    "player": {
+        "_comment": "Direct, non-ciphered URLs without PO token (2026-10).",
+        "clientName": "VISIONOS",
+        "clientVersion": "1.02",
+        "clientNameId": 101,
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+        "context": {
+            "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+            "deviceMake": "Apple",
+            "deviceModel": "RealityDevice17,1",
+            "osName": "visionOS",
+            "osVersion": "26.5.23O471"
+        }
+    },
+    "browse": {
+        "_comment": "Signed-in feeds (Bearer token): only the TV client accepts it.",
+        "clientName": "TVHTML5",
+        "clientVersion": "7.20261102.18.00",
+        "clientNameId": 7,
+        "userAgent": "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
+        "context": {
+            "deviceMake": "Samsung",
+            "deviceModel": "SmartTV"
+        }
+    },
+    "history": {
+        "clientName": "TVHTML5",
+        "clientNameId": 7,
+        "clientVersion": "5.20260901",
+        "context": {},
+        "userAgent": "Mozilla/5.0 (DirectFB; Linux x86_64) Cobalt/4.13031-qa (unlike Gecko) Starboard/1"
+    }
+}

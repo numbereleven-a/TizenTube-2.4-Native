@@ -1,0 +1,12 @@
+/upstream/
+/artifacts/
+/native/build/
+/app/*.nexe
+/app/*.nmf
+/app/decipher-worker.js
+AGENTS.md
+*.local.*
+node_modules/
+/app/author-signature.xml
+/app/signature1.xml
+/app/.manifest.tmp
