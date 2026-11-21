@@ -33,9 +33,9 @@ Standard [TizenTube](https://github.com/reisxd/TizenTube) and [TizenTube-old-tiz
 
 ## Install
 
-The release ZIP contains an unsigned package (`app` files / widget). Sign it with a Samsung certificate profile that includes your TV's DUID before installation. Personal certificates and device-specific signatures are not included in the download.
+The release ZIP contains one unsigned `.wgt`. Sign it with a Samsung certificate profile that includes your TV's DUID before installation. Personal certificates and device-specific signatures are not included in the download.
 
-1. Download the release ZIP from the [latest release](https://github.com/numbereleven-a/TizenTube-2.4-Native/releases/latest) and extract it.
+1. Download the release ZIP from the [latest release](https://github.com/numbereleven-a/TizenTube-2.4-Native/releases/latest) and extract the `.wgt`. For the Tizen Studio CLI steps below, open the `.wgt` as a ZIP and extract its contents into `extracted_folder`.
 2. Install Tizen Studio with Samsung TV Extension and Certificate Manager.
 3. Enable Developer Mode on your TV, connect it, and create a Samsung certificate profile for your TV's DUID. See Samsung's [certificate guide](https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/creating-certificates.html) and [TV connection guide](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html).
 4. Package and sign the widget with your certificate profile using Tizen Studio or CLI:

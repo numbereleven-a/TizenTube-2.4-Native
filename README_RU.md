@@ -33,9 +33,9 @@
 
 ## Установка
 
-В ZIP-архиве релиза находится неподписанный пакет виджета. Перед установкой его нужно подписать профилем сертификата Samsung, в который добавлен DUID вашего телевизора. Личные сертификаты и подписи для конкретного устройства в архив не входят.
+В ZIP-архиве релиза находится один неподписанный `.wgt`. Перед установкой его нужно подписать профилем сертификата Samsung, в который добавлен DUID вашего телевизора. Личные сертификаты и подписи для конкретного устройства в архив не входят.
 
-1. Скачайте ZIP-архив из [последнего релиза](https://github.com/numbereleven-a/TizenTube-2.4-Native/releases/latest) и распакуйте его.
+1. Скачайте ZIP-архив из [последнего релиза](https://github.com/numbereleven-a/TizenTube-2.4-Native/releases/latest) и извлеките `.wgt`. Для команды Tizen Studio CLI ниже откройте `.wgt` как ZIP и извлеките его содержимое в отдельную папку.
 2. Установите Tizen Studio, Samsung TV Extension и Certificate Manager.
 3. Включите Developer Mode на телевизоре, подключите ТВ и создайте профиль сертификата Samsung с DUID телевизора. См. [инструкцию по сертификатам](https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/creating-certificates.html) и [подключению телевизора](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html).
 4. Соберите и подпишите WGT своим профилем сертификата через Tizen Studio или CLI:
