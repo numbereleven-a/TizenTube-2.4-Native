@@ -154,10 +154,12 @@ test('native integration handles seek preview, idle hiding and optional pause un
     callbacks.reveal(false);fire(5000);assert.equal(nodes.hud.hidden,true);
     let stageCb,doneCb;
     context.YouTube.player=(id,cb,cur,onProgress)=>{doneCb=cb;stageCb=onProgress;};
-    context.omegaOpen('fallbackId','Fallback Card Title');
+    context.omegaOpen('fallbackId','Fallback Card Title',false,false,'2 дня назад');
     stageCb('prepare');assert.equal(nodes.status.className,'preparing');assert.match(nodes.status.textContent,/Подготовка видео/);
-    doneCb(null,{...info,id:'fallbackId',title:'fallbackId'});
-    assert.equal(nodes.title.textContent,'Fallback Card Title');assert.equal(nodes.status.className,'');
+    doneCb(null,{...info,id:'fallbackId',title:'fallbackId',author:'Synthetic Channel'});
+    assert.equal(nodes.title.textContent,'Fallback Card Title');assert.equal(nodes['video-meta'].textContent,'Synthetic Channel · 2 дня назад');assert.equal(nodes.status.className,'');
+    callbacks.meta({date:'20 нояб. 2026 г.',relativeDate:'2 дня назад'});
+    assert.equal(nodes['video-meta'].textContent,'Synthetic Channel · 20 нояб. 2026 г. · 2 дня назад');
     assert.equal(nodes['pause-indicator'].hidden,true);assert.equal(nodes['play-pause'].className,'');
     key(10252);assert.equal(nodes['pause-indicator'].hidden,false);assert.equal(nodes['play-pause'].className,'is-paused');
     key(10252);assert.equal(nodes['pause-indicator'].hidden,true);assert.equal(nodes['play-pause'].className,'');

@@ -56,7 +56,7 @@
             var request=serial,revision=likeRevision;
             YouTube.rating(value.id,function(error,state){if(request!==serial||revision!==likeRevision||error)return;liked=state;renderLike();});
             chapters=[];chaptersState='loading';
-            if(YouTube.chapters)YouTube.chapters(value.id,function(error,items){if(info!==value)return;chapters=items||[];chaptersState=error?'error':'ready';});
+            if(YouTube.chapters)YouTube.chapters(value.id,function(error,items,meta){if(info!==value)return;chapters=items||[];chaptersState=error?'error':'ready';if(!error&&meta&&hooks.meta)hooks.meta(meta);});
             el('play-pause').onclick=function(){hooks.pause();};
             el('play-quality').onclick=function(){show('quality');};
             el('play-like').onclick=function(){interact(liked===true?'removelike':'like');};

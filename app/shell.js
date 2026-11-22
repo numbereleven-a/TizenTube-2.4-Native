@@ -50,7 +50,7 @@
         b.className=item.isChannel?'card channel-card':'card';b.type='button';image.setAttribute('data-src',item.isChannel?(item.avatar||'icons/person.png'):'https://i.ytimg.com/vi/'+item.id+'/mqdefault.jpg');image.alt='';
         if(item.isChannel&&item.avatar)image.onerror=function(){image.onerror=null;image.setAttribute('data-src','icons/person.png');image.src='icons/person.png';};
         title.textContent=item.title;meta.textContent=(item.channel||'')+(item.date?' · '+item.date:'')+(item.duration?' · '+item.duration:'');info.className='card-info';info.appendChild(title);info.appendChild(meta);b.appendChild(image);b.appendChild(info);
-        b.onclick=function(){lastFocus=b;if(item.isChannel)root.Shell.channel(item.id,item.title);else root.omegaOpen(item.id,item.title);};return b;
+        b.onclick=function(){lastFocus=b;if(item.isChannel)root.Shell.channel(item.id,item.title);else root.omegaOpen(item.id,item.title,false,false,item.date);};return b;
     }
     function render(items,append){
         var host=el('results');if(!append)host.textContent='';host.className='video-grid';

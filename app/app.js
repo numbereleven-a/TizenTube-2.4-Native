@@ -73,13 +73,21 @@
         command('seek',{position:Math.max(0,Math.min(duration-0.1,target))}); if(el('hud').hidden)showHud();
     }
     function fail(error) { rememberResume();flushResume();DebugLog.active(false);WatchHistory.stop();loading = playing = paused = hudHeld = false; currentPair = null; generation++; resumeAt=null;awaitSeekResume=false;clearTimeout(hudTimer);clearTimeout(seekTimer);seekTarget=null;clearSeekPreview();PlaybackControls.stop();syncPause();sb.reset(); command('stop'); el('home').hidden = false; el('hud').hidden = true; status(error); Shell.restore(); }
+    function formatPublished(value){var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(value||'');if(!m)return value||'';return playerSettings.language==='en'?m[1]+'-'+m[2]+'-'+m[3]:m[3]+'.'+m[2]+'.'+m[1];}
+    function renderVideoMeta(info){
+        var parts=[],date=info&&info.date?info.date:formatPublished(info&&info.published),rel=info&&info.relativeDate||'';
+        if(info&&info.author)parts.push(info.author);
+        if(date)parts.push(date);
+        if(rel&&rel!==date)parts.push(rel);
+        el('video-meta').textContent=parts.join(' · ');
+    }
     function start(info,pair) {
         currentPair = pair;
         selectedQuality={codec:YouTube.codec(pair[0]),height:parseInt(YouTube.qualityLabel(pair[0]),10)||pair[0].height};
         if(!el('home').hidden)Shell.remember(); video = info; position = 0; duration = info.isLive ? 0 : info.duration; playing = true; paused = seeking = nativePlayable = hudHeld = false;
         clearTimeout(seekTimer);seekTarget=null;awaitSeekResume=false;clearSeekPreview();
         syncPause();el('sponsor-segments').textContent='';
-        el('home').hidden = true; el('title').textContent = info.title;
+        el('home').hidden = true; el('title').textContent = info.title; renderVideoMeta(info);
         el('format').textContent = YouTube.qualityLabel(pair[0])+' · '+pair[0].width+'×'+pair[0].height+' · '+(YouTube.codec(pair[0])==='h264'?'H.264':'VP9')+' + AAC';
         el('play-state').textContent = 'Буферизация…'; el('sb-status').textContent = info.isLive ? 'Прямой эфир' : playerSettings.sponsor ? 'SponsorBlock · загрузка' : 'SponsorBlock выключен'; showHud();
         command('open',{live:!!info.isLive,duration:duration,userAgent:info.userAgent,mode:playerSettings.tls,tracks:pair.map(function (f) { return {url:f.url+(f.url.indexOf('?')<0?'?':'&')+'cpn='+encodeURIComponent(info.cpn),length:Number(f.contentLength)||0,fps:f.fps||30}; })});
@@ -91,7 +99,7 @@
     function toggleSponsor(){playerSettings.sponsor=!playerSettings.sponsor;saveSettings();if(video&&video.isLive){sb.enabled=false;el('sb-status').textContent='Прямой эфир';segments();showHud();return;}sb.enabled=playerSettings.sponsor;sb.waiting=null;
         if(sb.enabled)sb.load(video.id,generation,function(){return generation;},function(error,count){el('sb-status').textContent=error||'SponsorBlock · '+count+' фрагм.';segments();});
         else {el('sb-status').textContent='SponsorBlock выключен';segments();}showHud();}
-    function controls(info){PlaybackControls.start(info,{toast:toast,reveal:showHud,chapter:function(time){seek(time,true);},jump:function(delta){seek(position+delta,true);},pause:togglePause,sponsor:toggleSponsor,channel:function(id){back();Shell.channel(id);},quality:function(pair){DebugLog.record('quality');if(resumeAt===null && !info.isLive){resumeAt=position;resumePaused=paused;}generation++;command('stop');start(info,pair);toast('Смена качества…');}});}
+    function controls(info){PlaybackControls.start(info,{toast:toast,reveal:showHud,meta:function(m){if(video!==info||!m)return;if(m.date)info.date=m.date;if(m.relativeDate)info.relativeDate=m.relativeDate;renderVideoMeta(info);},chapter:function(time){seek(time,true);},jump:function(delta){seek(position+delta,true);},pause:togglePause,sponsor:toggleSponsor,channel:function(id){back();Shell.channel(id);},quality:function(pair){DebugLog.record('quality');if(resumeAt===null && !info.isLive){resumeAt=position;resumePaused=paused;}generation++;command('stop');start(info,pair);toast('Смена качества…');}});}
     function tryFormatFallback(info, trackIndex, code) {
         var failed = currentPair && currentPair[trackIndex];
         if (!info || info.isLive || !failed || !failed.itag || formatFallbacks >= 3) return false;
@@ -106,16 +114,22 @@
         generation++; command('stop'); start(info, nextPair); toast('Пробую другой поток…');
         return true;
     }
-    function open(id, fallbackTitle,preferAccount,isRefresh) {
+    function open(id, fallbackTitle,preferAccount,isRefresh,fallbackDate) {
         var keepPlayback = !!preferAccount || !!isRefresh;
         var keepPosition=resumeAt!==null?resumeAt:position,keepPaused=paused,keepQuality=selectedQuality;
-        var fallbackInfo=preferAccount&&video&&video.id===id?video:null;
+        var fallbackInfo=keepPlayback&&video&&video.id===id?video:null;
         if (!keepPlayback) { excludedItags = {}; formatFallbacks = 0; streamRefreshes = 0; }
         if (loading || !nativeReady) return;rememberResume();flushResume(); loading = true; var current = ++generation; command('stop'); playing = false; sb.reset(); status('Получение потоков…');
         YouTube.player(id,function (error,info) {
             if (current !== generation) return;
             if (error) { if(keepPlayback){if(fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;fail(error);}else{loading=false;status(error);}return; }
             if (fallbackTitle && (!info.title || info.title === info.id)) info.title = fallbackTitle;
+            if (fallbackDate && !info.relativeDate) info.relativeDate = fallbackDate;
+            if (fallbackInfo) {
+                if (!info.author && fallbackInfo.author) info.author = fallbackInfo.author;
+                if (!info.date && fallbackInfo.date) info.date = fallbackInfo.date;
+                if (!info.relativeDate && fallbackInfo.relativeDate) info.relativeDate = fallbackInfo.relativeDate;
+            }
             var pair = YouTube.select(info,keepPlayback&&keepQuality?keepQuality:playerSettings);
             DebugLog.record('formats',{total:info.formats.length,direct:info.formats.filter(function(f){return !!f.url;}).length,sized:info.formats.filter(function(f){return !!f.url && Number(f.contentLength)>0;}).length,video:info.formats.filter(function(f){return /^video\//.test(f.mimeType||'');}).length,audio:info.formats.filter(function(f){return /^audio\//.test(f.mimeType||'');}).length,ok:!!pair});
             if (!pair) {if(keepPlayback&&fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;var missing=info.formats.some(function(f){return f.url;}) && !info.formats.some(function(f){return f.url && Number(f.contentLength)>0;})?'Потоки без указанного размера пока не поддерживаются.':'Нет подходящих прямых потоков. Попробуйте другой кодек или ролик.';if(keepPlayback)fail(missing);else{loading=false;status(missing);}return;}

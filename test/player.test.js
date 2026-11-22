@@ -231,8 +231,11 @@ test('searchPage supports continuations and signed player falls back when VISION
     requests.shift().cb(null,JSON.stringify({playabilityStatus:{status:'OK'},streamingData:{adaptiveFormats:[{mimeType:'video/mp4; codecs="avc1.640028"',url:'https://example.test/kids',height:720,contentLength:'100'}]}}),200);
     assert.equal(kidsPlayable.title,'Synthetic Kids Show');assert.equal(kidsPlayable.channelId,'UCkids');assert.equal(kidsPlayable.duration,3422);
     let microPlayable;c.YouTube.player('syntheticMicro',(error,info)=>{assert.equal(error,null);microPlayable=info;});
-    requests.shift().cb(null,JSON.stringify({playabilityStatus:{status:'OK'},microformat:{playerMicroformatRenderer:{title:{simpleText:'Micro Title'}}},streamingData:{adaptiveFormats:[{mimeType:'video/mp4; codecs="avc1.640028"',url:'https://example.test/micro',height:720,contentLength:'100'}]}}),200);
-    assert.equal(microPlayable.title,'Micro Title');
+    requests.shift().cb(null,JSON.stringify({playabilityStatus:{status:'OK'},videoDetails:{author:'Synthetic Author'},microformat:{playerMicroformatRenderer:{title:{simpleText:'Micro Title'},publishDate:'2024-05-12'}},streamingData:{adaptiveFormats:[{mimeType:'video/mp4; codecs="avc1.640028"',url:'https://example.test/micro',height:720,contentLength:'100'}]}}),200);
+    assert.equal(microPlayable.title,'Micro Title');assert.equal(microPlayable.author,'Synthetic Author');assert.equal(microPlayable.published,'2024-05-12');
+    let nextChapters,nextMeta;c.YouTube.chapters('syntheticMicro',(error,items,meta)=>{assert.equal(error,null);nextChapters=items;nextMeta=meta;});
+    requests.shift().cb(null,JSON.stringify({contents:{videoPrimaryInfoRenderer:{dateText:{simpleText:'12 мая 2024\u202fг.'},relativeDateText:{simpleText:'2 года назад'}}}}),200);
+    assert.equal(nextChapters.length,0);assert.equal(nextMeta.date,'12 мая 2024 г.');assert.equal(nextMeta.relativeDate,'2 года назад');
     const fbInfo={formats:[
         {itag:248,mimeType:'video/webm; codecs="vp9"',url:'https://example.test/v248',height:1080,fps:30,bitrate:1800000,contentLength:'100'},
         {itag:137,mimeType:'video/mp4; codecs="avc1.640028"',url:'https://example.test/v137',height:1080,fps:30,bitrate:2500000,contentLength:'100'},

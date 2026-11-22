@@ -120,12 +120,18 @@
             };
             x.onerror = function () { cb('Не удалось прочитать параметры клиента'); }; x.send();
         },
-        chapters:function(id,cb){post('search','next',{videoId:id},function(error,data){if(error){cb(error);return;}var chapters=[],seen={};
+        chapters:function(id,cb){post('search','next',{videoId:id},function(error,data){if(error){cb(error);return;}var chapters=[],seen={},date='',relativeDate='';
+            function clean(s){return (s||'').replace(/[\u202f\u00a0]/g,' ').replace(/^\s+|\s+$/g,'');}
             function walk(v){if(!v||typeof v!=='object')return;var item=v.chapterRenderer||v.macroMarkersListItemRenderer;
                 if(item){var tap=item.onTap||{},endpoint=tap.innertubeCommand||tap;var time=item.timeRangeStartMillis!==undefined?Number(item.timeRangeStartMillis)/1000:Number((endpoint.watchEndpoint||{}).startTimeSeconds);
                     if(isFinite(time)&&time>=0&&!seen[time]){seen[time]=true;chapters.push({time:time,title:text(item.title)});}}
+                if(v.videoPrimaryInfoRenderer){
+                    if(!date)date=clean(text(v.videoPrimaryInfoRenderer.dateText));
+                    if(!relativeDate)relativeDate=clean(text(v.videoPrimaryInfoRenderer.relativeDateText));
+                }
+                if(!date && v.videoDescriptionHeaderRenderer)date=clean(text(v.videoDescriptionHeaderRenderer.publishDate));
                 for(var key in v)if(v.hasOwnProperty(key))walk(v[key]);}
-            walk(data);chapters.sort(function(a,b){return a.time-b.time;});cb(null,chapters);
+            walk(data);chapters.sort(function(a,b){return a.time-b.time;});cb(null,chapters,{date:date,relativeDate:relativeDate});
         });},
         search: function (query, cb) {
             if (!ready) { cb('Клиент ещё загружается'); return; }
@@ -219,7 +225,11 @@
                 if (error) { cb(error); return; }
                 var details = data.videoDetails || {}, micro = (data.microformat || {}).playerMicroformatRenderer || {};
                 var title = details.title || text(micro.title);
+                var author = details.author || micro.ownerChannelName || '';
+                var published = micro.publishDate || micro.uploadDate || '';
                 if (title && !meta.title) meta.title = title;
+                if (author && !meta.author) meta.author = author;
+                if (published && !meta.published) meta.published = published;
                 if (details.channelId && !meta.channelId) meta.channelId = details.channelId;
                 if (Number(details.lengthSeconds) && !meta.duration) meta.duration = Number(details.lengthSeconds);
                 if (details.isLive === true) meta.isLive = true;
@@ -233,7 +243,7 @@
                 if(role==='player' && Auth.signedIn() && !formats.some(function(f){return f.url && (codec(f) || /audio\/mp4.*mp4a/.test(f.mimeType||''));})){signedFallback();return;}
                 var lengthSec = Number(details.lengthSeconds) || meta.duration || 0;
                 var isLive = details.isLive===true || meta.isLive===true || ((details.isLiveContent===true || meta.isLiveContent===true) && !lengthSec && !formats.some(function(f){return Number(f.contentLength)>0;}));
-                function done(error){if(error){cb(error);return;}cb(null, {id:id,cpn:cpn, title:title || meta.title || id, accountPlayer:role==='history', channelId:details.channelId || meta.channelId, tracking:data.playbackTracking, captions:((data.captions||{}).playerCaptionsTracklistRenderer||{}).captionTracks||[], duration:lengthSec, isLive:isLive,isLiveContent:details.isLiveContent===true || meta.isLiveContent===true,hasHls:!!(data.streamingData||{}).hlsManifestUrl,hasDash:!!(data.streamingData||{}).dashManifestUrl,hlsUrl:(data.streamingData||{}).hlsManifestUrl||'',formats:formats, userAgent:config[role].userAgent});}
+                function done(error){if(error){cb(error);return;}cb(null, {id:id,cpn:cpn, title:title || meta.title || id, author:author || meta.author || '', published:published || meta.published || '', accountPlayer:role==='history', channelId:details.channelId || meta.channelId, tracking:data.playbackTracking, captions:((data.captions||{}).playerCaptionsTracklistRenderer||{}).captionTracks||[], duration:lengthSec, isLive:isLive,isLiveContent:details.isLiveContent===true || meta.isLiveContent===true,hasHls:!!(data.streamingData||{}).hlsManifestUrl,hasDash:!!(data.streamingData||{}).dashManifestUrl,hlsUrl:(data.streamingData||{}).hlsManifestUrl||'',formats:formats, userAgent:config[role].userAgent});}
                 if(role==='history' && formats.some(function(f){return /[?&]n=/.test(f.url||'');})){progress('prepare');StreamDecipher.fix(formats,historySource,historyPlayerUrl,function(error){
                     if(error&&!historySource){progress('account');historyTimestamp(function(loadError){if(isCurrent&&!isCurrent())return;if(loadError){done(loadError);return;}progress('prepare');StreamDecipher.fix(formats,historySource,historyPlayerUrl,done,historyStamp);},true);}
                     else done(error);

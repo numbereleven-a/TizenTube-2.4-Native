@@ -41,7 +41,7 @@
     if(language!=='en')return;
     document.documentElement.lang='en';
     var profile=document.getElementById('profile-label');if(profile)profile.textContent=text(profile.textContent);
-    var excluded={results:true,title:true,captions:true,'account-name':true,'profile-label':true,'account-handle':true,'login-code':true,'login-url':true,'settings-notice':true};
+    var excluded={results:true,title:true,'video-meta':true,captions:true,'account-name':true,'profile-label':true,'account-handle':true,'login-code':true,'login-url':true,'settings-notice':true};
     function translate(node){
         if(node.nodeType===3){var value=text(node.nodeValue);if(value!==node.nodeValue)node.nodeValue=value;return;}
         if(node.nodeType!==1||excluded[node.id]||/^(SCRIPT|STYLE|CANVAS)$/.test(node.tagName))return;
