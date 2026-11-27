@@ -185,4 +185,24 @@ test('native integration handles seek preview, idle hiding and optional pause un
     fbOpen=commands.filter(m=>m.command==='open').at(-1);
     assert.match(fbOpen.tracks[0].url,/v137/);
     assert.match(fbOpen.tracks[1].url,/a139/);
+    const debugEvents=[];context.DebugLog.record=(event,data)=>debugEvents.push({event,data});
+    context.YouTube.player=(id,cb,cur,prog,acc,ref)=>cb(null,{...info,id,accountPlayer:!!acc,formats:[v248,v137,a140]});
+    context.YouTube.select=(inf,set,excl)=>{
+        const v=[v248,v137].find(f=>!(excl&&excl[f.itag]));
+        const a=[a140].find(f=>!(excl&&excl[f.itag]));
+        return v&&a?[v,a]:null;
+    };
+    context.omegaOpen('videoRefreshFb');
+    fbOpen=commands.filter(m=>m.command==='open').at(-1);
+    assert.match(fbOpen.tracks[0].url,/v248/);assert.match(fbOpen.tracks[1].url,/a140/);
+    listeners['native-message']({data:{type:'player',state:'playing',position:50,duration:200,ready:true,session:fbOpen.session}});
+    context.YouTube.player=(id,cb)=>cb('Refresh failed');
+    listeners['native-message']({data:{type:'player',state:'video-error',code:0,position:50,duration:200,ready:true,session:fbOpen.session}});
+    assert.equal(nodes.home.hidden,true);
+    fbOpen=commands.filter(m=>m.command==='open').at(-1);
+    assert.match(fbOpen.tracks[0].url,/v137/);assert.match(fbOpen.tracks[1].url,/a140/);
+    assert.ok(debugEvents.some(e=>e.event==='metadata'&&e.data.state==='video-format-fallback'&&e.data.code===0));
+    assert.equal(debugEvents.some(e=>e.event==='metadata'&&e.data.state==='audio-format-fallback'),false);
+    listeners['native-message']({data:{type:'player',state:'playing',position:0,duration:200,ready:true,session:fbOpen.session}});
+    assert.equal(commands.at(-1).command,'seek');assert.equal(commands.at(-1).position,50);
 });

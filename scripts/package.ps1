@@ -39,8 +39,25 @@ if(-not $Observer){
     }
     [IO.File]::WriteAllText($htmlPath,$html)
     # Keep the distributable independent of a particular TV's certificate.
-    $files=@(Get-ChildItem -LiteralPath $stage)
-    Compress-Archive -LiteralPath $files.FullName -DestinationPath (Join-Path $destination ('TizenTube-2.4-Native-'+$version+'.zip'))
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $unsignedWgt=Join-Path $destination 'TizenTube-2.4-Native.wgt'
+    $releaseZip=Join-Path $destination ('TizenTube-2.4-Native-'+$version+'.zip')
+    try{
+        $wgtArchive=[IO.Compression.ZipFile]::Open($unsignedWgt,[IO.Compression.ZipArchiveMode]::Create)
+        try{
+            Get-ChildItem -LiteralPath $stage -File -Recurse | Sort-Object FullName | ForEach-Object {
+                $entryName=$_.FullName.Substring($stage.Length).TrimStart([char[]]'\/').Replace('\','/')
+                [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($wgtArchive,$_.FullName,$entryName,[IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            }
+        } finally { $wgtArchive.Dispose() }
+        $zipArchive=[IO.Compression.ZipFile]::Open($releaseZip,[IO.Compression.ZipArchiveMode]::Create)
+        try{
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipArchive,$unsignedWgt,'TizenTube-2.4-Native.wgt',[IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        } finally { $zipArchive.Dispose() }
+    } finally {
+        if(Test-Path -LiteralPath $unsignedWgt){ Remove-Item -LiteralPath $unsignedWgt }
+    }
 }
 & $TizenCli package -t wgt -s $CertificateProfile -o $destination -- $stage
 if($LASTEXITCODE){throw 'Packaging failed'}

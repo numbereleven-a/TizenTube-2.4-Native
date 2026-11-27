@@ -114,15 +114,16 @@
         generation++; command('stop'); start(info, nextPair); toast('Пробую другой поток…');
         return true;
     }
-    function open(id, fallbackTitle,preferAccount,isRefresh,fallbackDate) {
+    function open(id, fallbackTitle,preferAccount,isRefresh,fallbackDate,fallbackTrack,fallbackCode) {
         var keepPlayback = !!preferAccount || !!isRefresh;
         var keepPosition=resumeAt!==null?resumeAt:position,keepPaused=paused,keepQuality=selectedQuality;
         var fallbackInfo=keepPlayback&&video&&video.id===id?video:null;
+        var retryTrack=fallbackTrack===0?0:1,retryCode=typeof fallbackCode==='number'?fallbackCode:503;
         if (!keepPlayback) { excludedItags = {}; formatFallbacks = 0; streamRefreshes = 0; }
         if (loading || !nativeReady) return;rememberResume();flushResume(); loading = true; var current = ++generation; command('stop'); playing = false; sb.reset(); status('Получение потоков…');
         YouTube.player(id,function (error,info) {
             if (current !== generation) return;
-            if (error) { if(keepPlayback){if(fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;fail(error);}else{loading=false;status(error);}return; }
+            if (error) { if(keepPlayback){if(fallbackInfo&&tryFormatFallback(fallbackInfo,retryTrack,retryCode))return;fail(error);}else{loading=false;status(error);}return; }
             if (fallbackTitle && (!info.title || info.title === info.id)) info.title = fallbackTitle;
             if (fallbackDate && !info.relativeDate) info.relativeDate = fallbackDate;
             if (fallbackInfo) {
@@ -132,7 +133,7 @@
             }
             var pair = YouTube.select(info,keepPlayback&&keepQuality?keepQuality:playerSettings);
             DebugLog.record('formats',{total:info.formats.length,direct:info.formats.filter(function(f){return !!f.url;}).length,sized:info.formats.filter(function(f){return !!f.url && Number(f.contentLength)>0;}).length,video:info.formats.filter(function(f){return /^video\//.test(f.mimeType||'');}).length,audio:info.formats.filter(function(f){return /^audio\//.test(f.mimeType||'');}).length,ok:!!pair});
-            if (!pair) {if(keepPlayback&&fallbackInfo&&tryFormatFallback(fallbackInfo,1,503))return;var missing=info.formats.some(function(f){return f.url;}) && !info.formats.some(function(f){return f.url && Number(f.contentLength)>0;})?'Потоки без указанного размера пока не поддерживаются.':'Нет подходящих прямых потоков. Попробуйте другой кодек или ролик.';if(keepPlayback)fail(missing);else{loading=false;status(missing);}return;}
+            if (!pair) {if(keepPlayback&&fallbackInfo&&tryFormatFallback(fallbackInfo,retryTrack,retryCode))return;var missing=info.formats.some(function(f){return f.url;}) && !info.formats.some(function(f){return f.url && Number(f.contentLength)>0;})?'Потоки без указанного размера пока не поддерживаются.':'Нет подходящих прямых потоков. Попробуйте другой кодек или ролик.';if(keepPlayback)fail(missing);else{loading=false;status(missing);}return;}
             if (keepPlayback) { excludedItags = {}; formatFallbacks = 0; }
             status('');
             resumeAt=keepPlayback&&!info.isLive?(keepPosition>0?keepPosition:null):resumePosition(info);resumePaused=keepPlayback&&keepPaused;controls(info);DebugLog.record('open');DebugLog.active(true);WatchHistory.start(info);start(info,pair);
@@ -233,20 +234,21 @@
             WatchHistory.tick(position,m.state==='playing' && !paused && !seeking && resumeAt===null && seekTarget===null);
             if(nativePlayable && resumeAt!==null){var targetPosition=resumeAt;resumeAt=null;if(resumePaused){paused=true;syncPause();command('pause');}seek(targetPosition);}
             if (!el('hud').hidden && seekTarget===null && !seeking) { el('time').textContent = video && video.isLive ? clock(position)+' · Прямой эфир' : clock(position)+' / '+clock(duration); el('progress').style.width = (video && video.isLive ? 100 : duration ? Math.min(100,position/duration*100) : 0)+'%'; }
-            if(((m.state==='audio-error'&&m.code===503)||(m.state==='reconnecting'&&m.audio&&m.audio.http===503&&m.audio.serverRetries>=1))&&video&&!video.isLive&&!video.accountPlayer&&Auth.signedIn()){DebugLog.record('metadata',{state:'audio-client-fallback',code:503});open(video.id,video.title,true);return;}
+            if(((m.state==='audio-error'&&m.code===503)||(m.state==='reconnecting'&&m.audio&&m.audio.http===503&&m.audio.serverRetries>=1))&&video&&!video.isLive&&!video.accountPlayer&&Auth.signedIn()){DebugLog.record('metadata',{state:'audio-client-fallback',code:503});open(video.id,video.title,true,false,null,1,503);return;}
             if((m.state==='video-error'||m.state==='audio-error')&&(!nativePlayable||m.code===503)&&video&&!video.isLive){
                 var bothDeadHost=!nativePlayable&&m.code===0&&m.video&&m.audio&&!m.video.tls&&!m.audio.tls&&!m.video.http&&!m.audio.http;
                 if(!bothDeadHost&&tryFormatFallback(video,m.state==='audio-error'?1:0,m.code))return;
-                if(!video.accountPlayer&&Auth.signedIn()){DebugLog.record('metadata',{state:m.state==='audio-error'?'audio-client-fallback':'video-client-fallback',code:m.code||0});open(video.id,video.title,true);return;}
+                if(!video.accountPlayer&&Auth.signedIn()){var clientTrack=m.state==='audio-error'?1:0;DebugLog.record('metadata',{state:clientTrack?'audio-client-fallback':'video-client-fallback',code:m.code||0});open(video.id,video.title,true,false,null,clientTrack,m.code||0);return;}
                 if(bothDeadHost&&tryFormatFallback(video,m.state==='audio-error'?1:0,m.code))return;
             }
             if (m.code === -12 && (m.state === 'video-append-error' || m.state === 'audio-append-error') &&
                 tryFormatFallback(video, m.state === 'audio-append-error' ? 1 : 0, m.code)) return;
             if ((m.state === 'video-error' || m.state === 'audio-error') && nativePlayable && m.code === 0 && video && !video.isLive && streamRefreshes < 2) {
+                var refreshTrack = m.state === 'audio-error' ? 1 : 0;
                 streamRefreshes++;
-                DebugLog.record('metadata', {state: m.state === 'audio-error' ? 'audio-stream-refresh' : 'video-stream-refresh', code: 0});
+                DebugLog.record('metadata', {state: refreshTrack ? 'audio-stream-refresh' : 'video-stream-refresh', code: 0});
                 toast('Переподключение потока…');
-                open(video.id, video.title, !!video.accountPlayer, true);
+                open(video.id, video.title, !!video.accountPlayer, true, null, refreshTrack, 0);
                 return;
             }
             if (m.state.indexOf('error')>=0 || m.state==='invalid-url' || m.state==='unavailable' || m.state.indexOf('unsupported')===0) { fail('Плеер: '+m.state+' ('+m.code+')'); return; }

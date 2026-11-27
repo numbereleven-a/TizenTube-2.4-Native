@@ -240,9 +240,9 @@
                     cb(data.playabilityStatus && data.playabilityStatus.reason || 'Видео недоступно');return;
                 }
                 var formats = (data.streamingData || {}).adaptiveFormats || [];
-                if(role==='player' && Auth.signedIn() && !formats.some(function(f){return f.url && (codec(f) || /audio\/mp4.*mp4a/.test(f.mimeType||''));})){signedFallback();return;}
                 var lengthSec = Number(details.lengthSeconds) || meta.duration || 0;
                 var isLive = details.isLive===true || meta.isLive===true || ((details.isLiveContent===true || meta.isLiveContent===true) && !lengthSec && !formats.some(function(f){return Number(f.contentLength)>0;}));
+                if(role==='player' && Auth.signedIn() && !root.YouTube.select({isLive:isLive,formats:formats},{codec:root.playerSettings&&root.playerSettings.codec||'h264',height:root.playerSettings&&root.playerSettings.height||1080})){signedFallback();return;}
                 function done(error){if(error){cb(error);return;}cb(null, {id:id,cpn:cpn, title:title || meta.title || id, author:author || meta.author || '', published:published || meta.published || '', accountPlayer:role==='history', channelId:details.channelId || meta.channelId, tracking:data.playbackTracking, captions:((data.captions||{}).playerCaptionsTracklistRenderer||{}).captionTracks||[], duration:lengthSec, isLive:isLive,isLiveContent:details.isLiveContent===true || meta.isLiveContent===true,hasHls:!!(data.streamingData||{}).hlsManifestUrl,hasDash:!!(data.streamingData||{}).dashManifestUrl,hlsUrl:(data.streamingData||{}).hlsManifestUrl||'',formats:formats, userAgent:config[role].userAgent});}
                 if(role==='history' && formats.some(function(f){return /[?&]n=/.test(f.url||'');})){progress('prepare');StreamDecipher.fix(formats,historySource,historyPlayerUrl,function(error){
                     if(error&&!historySource){progress('account');historyTimestamp(function(loadError){if(isCurrent&&!isCurrent())return;if(loadError){done(loadError);return;}progress('prepare');StreamDecipher.fix(formats,historySource,historyPlayerUrl,done,historyStamp);},true);}

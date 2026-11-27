@@ -22,11 +22,16 @@
         }
         return decodeURIComponent(escape(pieces.join('')));
     }
-    function finish(id, error) {
+    function finish(id, error, hasBody) {
         var p = pending[id], text;
         if (!p) return;
         delete pending[id]; clearTimeout(p.timer);
-        if (!error) { try { if(p.binary){var out=new Uint8Array(p.size),offset=0;p.chunks.forEach(function(chunk){out.set(new Uint8Array(chunk),offset);offset+=chunk.byteLength;});text=out.buffer;}else text = decode(p.chunks); } catch (e) { error = 'Неверная кодировка ответа'; } }
+        if (!error || (hasBody && !p.binary)) {
+            try {
+                if(p.binary){var out=new Uint8Array(p.size),offset=0;p.chunks.forEach(function(chunk){out.set(new Uint8Array(chunk),offset);offset+=chunk.byteLength;});text=out.buffer;}
+                else text = decode(p.chunks);
+            } catch (e) { if (!error) error = 'Неверная кодировка ответа'; }
+        }
         if(root.DebugLog && (error || p.phase!=='api'||p.retried))root.DebugLog.record('network',{state:p.phase,http:p.status,ok:!error,endpoint:p.endpoint,retries:p.retried});
         p.callback(error, text, p.status, p.headers);
     }
@@ -55,7 +60,7 @@
                 if (p.size > 8 * 1024 * 1024) { module.postMessage({type:'abort', id:m.id}); finish(m.id, 'Ответ слишком большой'); }
                 else p.chunks.push(m.body);
             }
-            if (m.type === 'done') finish(m.id, p.status >= 200 && p.status < 300 ? null : 'HTTP ' + p.status);
+            if (m.type === 'done') finish(m.id, p.status >= 200 && p.status < 300 ? null : 'HTTP ' + p.status, true);
             if (m.type === 'error') {
                 if(root.DebugLog){var technical=String(m.error||''),number=/:\s*(-?\d+)/.exec(technical);root.DebugLog.record('network',{state:/^DNS/.test(technical)?'dns':/^TCP/.test(technical)?'tcp':/^timeout/.test(technical)?'timeout':/SSL|TLS|X509/.test(technical)?'tls':'transport',code:number?Number(number[1]):0,http:p.status,inputBytes:p.size,retries:p.retried,endpoint:p.endpoint,stage:m.stage,reused:m.reused,offset:m.sent});}
                 // Search and player metadata are read-only POSTs. Retry a dropped read

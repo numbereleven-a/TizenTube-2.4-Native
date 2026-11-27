@@ -68,3 +68,38 @@ test('evicts decipher and diagnostics caches when localStorage throws QuotaExcee
     assert.equal(storage.has('omega-decipher'),false);assert.equal(storage.has('ttl-diagnostics'),false);
     assert.equal(c.Auth.accounts().length,1);
 });
+test('device login through NativeNet handles 428 authorization_pending and 403 slow_down until 200',()=>{
+    const sent=[],timers=[],events=[],storage=new Map();
+    const document={createElement:()=>{const a={};Object.defineProperty(a,'href',{set:url=>{const u=new URL(url);for(const k of ['protocol','hostname','pathname','search'])a[k]=u[k];}});return a;}};
+    const c=vm.createContext({Uint8Array,document,playerSettings:{tls:'auto'},
+        localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
+        setTimeout:(fn,ms)=>{timers.push({fn,ms,cancelled:false});return timers.length;},
+        clearTimeout:id=>{if(timers[id-1])timers[id-1].cancelled=true;}});
+    vm.runInContext(fs.readFileSync('app/network.js','utf8'),c);
+    vm.runInContext(fs.readFileSync('app/account.js','utf8'),c);
+    c.NativeNet.attach({postMessage:m=>sent.push({...m})});
+    function respond(status,body){
+        const req=sent.shift();assert.ok(req);
+        c.NativeNet.receive({id:req.id,type:'headers',status});
+        c.NativeNet.receive({id:req.id,type:'data',body:new TextEncoder().encode(body).buffer});
+        c.NativeNet.receive({id:req.id,type:'done'});
+    }
+    function nextPollTimer(){
+        const entry=timers.filter(t=>!t.cancelled&&t.ms!==45000).at(-1);
+        assert.ok(entry);entry.cancelled=true;return entry;
+    }
+    c.Auth.start(e=>events.push(e));
+    respond(200,'<script id="base-js" src="/synthetic.js"></script>');
+    respond(200,'clientId:"synthetic-client",key:"synthetic-public-identity"');
+    respond(200,JSON.stringify({device_code:'synthetic-device',user_code:'TEST-CODE',verification_url:'https://www.google.com/device',interval:5,expires_in:600}));
+    assert.equal(events.length,1);assert.equal(events[0].kind,'code');assert.equal(events[0].userCode,'TEST-CODE');
+    let poll=nextPollTimer();assert.equal(poll.ms,5000);poll.fn();
+    respond(428,JSON.stringify({error:'authorization_pending'}));
+    assert.equal(events.length,1);
+    poll=nextPollTimer();assert.equal(poll.ms,5000);poll.fn();
+    respond(403,JSON.stringify({error:'slow_down'}));
+    assert.equal(events.length,1);
+    poll=nextPollTimer();assert.equal(poll.ms,10000);poll.fn();
+    respond(200,JSON.stringify({access_token:'synthetic-access',refresh_token:'synthetic-refresh',expires_in:3600}));
+    assert.equal(events.length,2);assert.equal(events[1].kind,'success');assert.equal(c.Auth.signedIn(),true);
+});

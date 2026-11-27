@@ -457,7 +457,7 @@ bool NativePlayer::Network(const pp::VarDictionary& m) {
         if (type == "done" || type == "error") {
             t->busy = false; t->request = 0;
             if (!t->live || t->head_resolved) t->offset += t->range_received;
-            if(type=="done"&&t->range_valid&&t->range_received>0&&t->error.empty())t->server_retries=0;
+            if(type=="done"&&t->range_valid&&t->range_received>0&&t->error.empty()){t->server_retries=0;t->http_retries=0;}
             if(t->status==503&&t->server_retries<3&&t->range_received==0&&t->error.empty()){
                 t->retry_at=pp::Module::Get()->core()->GetTimeTicks()+0.5*(1<<t->server_retries);
                 ++t->server_retries;if(!t->live){t->header_range=true;t->host=t->base_host;t->path=t->base_path;}t->retry_fresh=true;t->redirected=false;t->redirects=0;reconnecting=true;
@@ -544,7 +544,7 @@ void NativePlayer::Pump(int32_t) {
         if (t.seek_pending) {
             int id = t.request; t.request = 0; t.busy = false;
             t.offset = t.seek_segment.offset; t.seek_pending = false; t.submitted = t.seek_segment.start_ms / 1000.0;
-            t.redirect.clear(); t.redirects = 0; t.server_retries = 0;
+            t.redirect.clear(); t.redirects = 0; t.server_retries = 0; t.http_retries = 0;
             pthread_mutex_unlock(&t.mutex);
             if (id) { pp::VarDictionary m; m.Set("type", "abort"); m.Set("id", id); send_(m); }
             pthread_mutex_lock(&t.mutex);
